@@ -176,6 +176,16 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw
       </div>
 
       <div class="group">
+        <h2>Serbatoio</h2>
+        <div class="param" data-key="areaPct" data-min="10" data-max="200">
+          <label for="areaPct_n">Area del serbatoio</label>
+          <input id="areaPct_n" type="number" step="1">
+          <input id="areaPct_r" type="range" min="0" max="1000" aria-label="areaPct">
+          <span class="unit" id="areaInfo"></span>
+        </div>
+      </div>
+
+      <div class="group">
         <h2>Realtà (facoltativo)</h2>
         <p class="note" style="margin:0">La pompa può solo riempire: u ≥ 0 sempre.</p>
         <label class="toggle"><input id="awOn" type="checkbox" checked> Anti-windup (PI)</label>
@@ -257,12 +267,13 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw
 
 <script>
 // ---------- Model constants ----------
-const AREA = 0.01;          // tank cross-section [m^2]
+const AREA_NOMINAL = 0.01;  // nominal tank cross-section [m^2]
+const area = () => AREA_NOMINAL * state.areaPct / 100;   // actual cross-section [m^2]
 const H_MAX = 0.5;          // tank height [m] (overflow above this)
 const DT = 0.005;           // integration step [s]
 
 const DEFAULTS = {
-  mode: "P", kp: 0.005, ki: 0.0005, h0: 0.10, r1: 0.25, tStep: 2, tEnd: 40,
+  mode: "P", areaPct: 100, kp: 0.005, ki: 0.0005, h0: 0.10, r1: 0.25, tStep: 2, tEnd: 40,
   satOn: false, uMax: 0.0005, awOn: true, distOn: false, d: 0.0002, tDist: 20
 };
 let state = JSON.parse(JSON.stringify(DEFAULTS));
@@ -296,7 +307,7 @@ function simulate(p) {
     let dxi = p.mode === "PI" ? e : 0;
     // Conditional integration anti-windup: stop integrating while saturated in the same direction
     if (p.mode === "PI" && p.awOn && u !== raw && Math.sign(e) === Math.sign(raw - u)) dxi = 0;
-    let dh = (u - dist(t)) / AREA;
+    let dh = (u - dist(t)) / (AREA_NOMINAL * p.areaPct / 100);
     if (h <= 0 && dh < 0) dh = 0;
     if (h >= H_MAX && dh > 0) dh = 0;
     return [dh, dxi];
@@ -376,6 +387,7 @@ function syncWidgets() {
   document.getElementById("ki_n").disabled = document.getElementById("ki_r").disabled = state.mode !== "PI";
   ["satOn", "awOn", "distOn"].forEach(k => document.getElementById(k).checked = state[k]);
   document.getElementById("satBox").hidden = !state.satOn;
+  document.getElementById("areaInfo").textContent = "%";
   document.getElementById("distBox").hidden = !state.distOn;
 }
 params.forEach(el => {
@@ -383,15 +395,17 @@ params.forEach(el => {
   const num = el.querySelector("input[type=number]");
   const rng = el.querySelector("input[type=range]");
   rng.addEventListener("input", () => {
-    state[key] = niceRound(sliderToVal(el, +rng.value));
+    state[key] = key === "areaPct" ? Math.round(sliderToVal(el, +rng.value)) : niceRound(sliderToVal(el, +rng.value));
+    if (key === "areaPct") document.getElementById("areaInfo").textContent = "%";
     num.value = +state[key].toPrecision(4);
     run();
   });
   num.addEventListener("change", () => {
     const v = parseFloat(String(num.value).replace(",", "."));
     if (!isFinite(v) || v < 0) { num.value = +state[key].toPrecision(4); return; }
-    state[key] = v;
-    rng.value = valToSlider(el, v);
+    state[key] = key === "areaPct" ? Math.min(200, Math.max(10, v)) : v;
+    num.value = +state[key].toPrecision(4);
+    rng.value = valToSlider(el, state[key]);
     run();
   });
 });
@@ -492,7 +506,7 @@ function draw() {
 function drawTank() {
   const i = revealT === null ? 0 : indexAt(Math.min(cursorT ?? revealT, revealT));
   const h = sim.h[i], r = sim.r[i], u = sim.u[i], t = sim.t[i];
-  const x0 = 30, x1 = 120, yTop = 30, yBot = 210, Y = v => yBot - (yBot - yTop) * v / H_MAX;
+  const tw = 90 * Math.sqrt(state.areaPct / 100) * 0.85, x0 = 72 - tw / 2, x1 = 72 + tw / 2, yTop = 30, yBot = 210, Y = v => yBot - (yBot - yTop) * v / H_MAX;
   const umax = Math.max(1e-9, ...sim.u.map(Math.abs));
   const stream = Math.max(0, u) / umax;
   const d = state.distOn && t >= state.tDist ? state.d : 0;
@@ -500,14 +514,14 @@ function drawTank() {
   let ticks = "";
   for (let v = 0; v <= H_MAX + 1e-9; v += 0.1) ticks += `<line x1="${x1}" x2="${x1 + 6}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--muted)"/><text x="${x1 + 9}" y="${Y(v) + 3}" font-size="8" fill="var(--muted)" font-family="var(--f-mono)">${v.toFixed(1)}</text>`;
   svg.innerHTML = `
-    <rect x="${x0 - 22}" y="6" width="50" height="10" fill="var(--muted)" rx="2"/>
-    <text x="${x0 + 3}" y="14" font-size="7" text-anchor="middle" fill="var(--panel)" font-family="var(--f-mono)">POMPA</text>
-    ${stream > 0.01 ? `<rect x="${x0 + 14}" y="16" width="${2 + 6 * stream}" height="${Y(h) - 16}" fill="var(--water)" opacity=".8"/>` : ""}
+    <rect x="${Math.max(2, x0 - 22)}" y="6" width="50" height="10" fill="var(--muted)" rx="2"/>
+    <text x="${Math.max(2, x0 - 22) + 25}" y="14" font-size="7" text-anchor="middle" fill="var(--panel)" font-family="var(--f-mono)">POMPA</text>
+    ${stream > 0.01 ? `<rect x="${x0 + Math.min(14, tw * 0.2)}" y="16" width="${2 + 6 * stream}" height="${Y(h) - 16}" fill="var(--water)" opacity=".8"/>` : ""}
     <rect x="${x0}" y="${Y(h)}" width="${x1 - x0}" height="${yBot - Y(h)}" fill="var(--water-soft)"/>
     <line x1="${x0}" x2="${x1}" y1="${Y(h)}" y2="${Y(h)}" stroke="var(--water)" stroke-width="2"/>
     <line x1="${x0 - 6}" x2="${x1 + 6}" y1="${Y(r)}" y2="${Y(r)}" stroke="var(--ref)" stroke-width="1.5" stroke-dasharray="4 3"/>
     <path d="M${x0} ${yTop - 6} V${yBot} H${x1} V${yTop - 6}" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
-    ${d > 0 ? `<path d="M${x0 + 45} ${yBot} v12 h-30" fill="none" stroke="var(--water)" stroke-width="3"/><text x="${x0 + 50}" y="${yBot + 17}" font-size="8" fill="var(--muted)" font-family="var(--f-mono)">d</text>` : ""}
+    ${d > 0 ? `<path d="M${x0 + tw / 2} ${yBot} v12 h-${Math.min(30, x0 + tw / 2 - 4)}" fill="none" stroke="var(--water)" stroke-width="3"/><text x="${x0 + tw / 2 + 5}" y="${yBot + 17}" font-size="8" fill="var(--muted)" font-family="var(--f-mono)">d</text>` : ""}
     ${ticks}`;
   document.getElementById("readout").innerHTML =
     `<div><span>t =</span> ${fmt(t, 2)} s</div><div><span>h =</span> ${fmt(h, 3)} m</div><div><span>r =</span> ${fmt(r, 3)} m</div><div><span>u =</span> ${fmt(u, 6)} m³/s</div>`;
@@ -555,6 +569,7 @@ function logPlay() {
   const s = state;
   let desc = s.mode === "P" ? `P kₚ=${fmt(s.kp, 4)}` : `PI kₚ=${fmt(s.kp, 4)} kᵢ=${fmt(s.ki, 5)}`;
   desc += ` · ${fmt(s.h0, 2)}→${fmt(s.r1, 2)} m`;
+  if (s.areaPct !== 100) desc += ` · A ${s.areaPct}%`;
   if (s.satOn) desc += ` · uₘₐₓ=${fmt(s.uMax, 5)}`;
   if (s.distOn) desc += ` · d=${fmt(s.d, 5)}`;
   playLog.push(desc);
@@ -590,6 +605,7 @@ function renderMetrics() {
 // ---------- Main ----------
 function run() {
   sim = simulate(state);
+  document.getElementById("areaInfo").textContent = "%";
   stopPlay(); revealT = null; cursorT = null;
   renderMetrics(); draw();
 }

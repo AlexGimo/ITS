@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laboratorio Serbatoio P/PI</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: instrument bench — controls column on the left, tank + two scopes on the right; stacks on phones */
+:root {
+  --bg: #eef2f4;
+  --panel: #ffffff;
+  --ink: #17242c;
+  --muted: #5b6b74;
+  --line: #d3dde2;
+  --water: #1f78b4;
+  --water-soft: #9ccbea;
+  --ref: #c27a12;
+  --cmd: #6a4fb3;
+  --ghost: #93a3ab;
+  --warn: #b3261e;
+  --ok: #2e7d4f;
+  --grid: #e4ebee;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif;
+  --f-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f171c; --panel: #16222a; --ink: #e3ecf0; --muted: #94a7b1; --line: #2a3a44;
+  --water: #4aa8e8; --water-soft: #1d4a6b; --ref: #e5a23c; --cmd: #a993f0; --ghost: #5d707a;
+  --warn: #f2786f; --ok: #6cc596; --grid: #1f2e37; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0f171c; --panel: #16222a; --ink: #e3ecf0; --muted: #94a7b1; --line: #2a3a44;
+  --water: #4aa8e8; --water-soft: #1d4a6b; --ref: #e5a23c; --cmd: #a993f0; --ghost: #5d707a;
+  --warn: #f2786f; --ok: #6cc596; --grid: #1f2e37; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw, 36px); margin: 0; letter-spacing: .01em; text-wrap: balance; }
+
+.bench { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 880px) { .bench { grid-template-columns: 1fr; } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.panel h2 { font-family: var(--f-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0; }
+.group { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.group:first-child { border-top: 0; padding-top: 0; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--ink); border-radius: 5px; overflow: hidden; }
+.seg button { font-family: var(--f-display); font-weight: 700; font-size: 18px; padding: 8px 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.seg button:focus-visible, .btn:focus-visible, input:focus-visible { outline: 2px solid var(--water); outline-offset: 2px; }
+
+.param { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.param label { font-weight: 600; font-size: 14px; }
+.param label small { font-weight: 400; color: var(--muted); }
+.param input[type=number] { width: 104px; font-family: var(--f-mono); font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.param input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--water); }
+.param.disabled { opacity: .4; }
+.unit { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+
+.toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.toggle input { width: 17px; height: 17px; accent-color: var(--water); }
+.sub { display: grid; gap: 10px; padding-left: 12px; border-left: 2px solid var(--line); }
+.sub[hidden] { display: none !important; }
+
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { font-family: var(--f-body); font-weight: 600; font-size: 14px; padding: 7px 12px; border-radius: 4px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; }
+.btn.primary { background: var(--water); border-color: var(--water); color: #fff; }
+.btn:disabled { opacity: .4; cursor: default; }
+
+.right { display: grid; gap: 18px; min-width: 0; }
+.top { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 18px; }
+@media (max-width: 560px) { .top { grid-template-columns: 1fr; } }
+
+.tankbox { display: grid; gap: 14px; justify-items: center; align-content: start; }
+.tankside { display: grid; gap: 10px; justify-items: center; }
+#tank { width: 150px; max-width: 100%; height: auto; }
+.btn.play { font-size: 16px; padding: 10px 22px; }
+@media (max-width: 560px) {
+  .tankbox { grid-template-columns: 130px minmax(0, 1fr); align-items: center; }
+  .tankside { justify-items: stretch; }
+}
+.readout { font-family: var(--f-mono); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.readout div span { color: var(--muted); }
+
+.scopes { display: grid; gap: 10px; min-width: 0; }
+.scope { position: relative; width: 100%; }
+.scope canvas { display: block; width: 100%; height: 230px; touch-action: pan-y; }
+.scope.small canvas { height: 150px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: 6px; background: var(--line); overflow: hidden; }
+@media (max-width: 700px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.metric { padding: 10px 14px; background: var(--panel); min-width: 0; }
+.bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 700px) { .bottom { grid-template-columns: 1fr; } }
+.metric .k { font-family: var(--f-display); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.metric .v { font-family: var(--f-mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.metric .v.warn { color: var(--warn); }
+.metric .v.ok { color: var(--ok); }
+
+.note { font-size: 13px; color: var(--muted); }
+.flag { color: var(--warn); font-weight: 600; }
+.history { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 2px; max-height: 180px; overflow-y: auto; font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+.history li { display: grid; grid-template-columns: 2.5em 1fr; gap: 6px; padding: 3px 0; border-bottom: 1px solid var(--grid); }
+.history li span:first-child { color: var(--muted); }
+.history .empty { color: var(--muted); font-family: var(--f-body); font-size: 13px; border: 0; display: block; }
+#playCount b { font-size: 18px; color: var(--water); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header>
+    <h1>Laboratorio Serbatoio · P / PI</h1>
+  </header>
+
+  <div class="bench">
+    <!-- Controls -->
+    <section class="panel" aria-label="Parametri">
+      <div class="group">
+        <h2>Controllore</h2>
+        <div class="seg" role="group" aria-label="Tipo di controllore">
+          <button id="modeP" aria-pressed="true">P</button>
+          <button id="modePI" aria-pressed="false">PI</button>
+        </div>
+        <div class="param" data-key="kp" data-min="0.0005" data-max="0.1" data-log="1">
+          <label for="kp_n">kₚ <small>guadagno proporzionale</small></label>
+          <input id="kp_n" type="number" step="any">
+          <input id="kp_r" type="range" min="0" max="1000" aria-label="kp">
+          <span class="unit">m²/s</span>
+        </div>
+        <div class="param" data-key="ki" data-min="0.00001" data-max="0.01" data-log="1">
+          <label for="ki_n">kᵢ <small>guadagno integrale</small></label>
+          <input id="ki_n" type="number" step="any">
+          <input id="ki_r" type="range" min="0" max="1000" aria-label="ki">
+          <span class="unit">m²/s²</span>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Gradino di riferimento</h2>
+        <div class="param" data-key="h0" data-min="0" data-max="0.5">
+          <label for="h0_n">Livello iniziale h₀</label>
+          <input id="h0_n" type="number" step="0.01">
+          <input id="h0_r" type="range" min="0" max="1000" aria-label="h0">
+          <span class="unit">m · è anche r prima del gradino</span>
+        </div>
+        <div class="param" data-key="r1" data-min="0" data-max="0.5">
+          <label for="r1_n">Riferimento dopo il gradino</label>
+          <input id="r1_n" type="number" step="0.01">
+          <input id="r1_r" type="range" min="0" max="1000" aria-label="r1">
+          <span class="unit">m</span>
+        </div>
+        <div class="param" data-key="tStep" data-min="0" data-max="50">
+          <label for="tStep_n">Istante del gradino</label>
+          <input id="tStep_n" type="number" step="0.5">
+          <input id="tStep_r" type="range" min="0" max="1000" aria-label="tStep">
+          <span class="unit">s</span>
+        </div>
+        <div class="param" data-key="tEnd" data-min="5" data-max="200">
+          <label for="tEnd_n">Durata simulazione</label>
+          <input id="tEnd_n" type="number" step="1">
+          <input id="tEnd_r" type="range" min="0" max="1000" aria-label="tEnd">
+          <span class="unit">s</span>
+        </div>
+      </div>
+
+      <div class="group">
+        <h2>Realtà (facoltativo)</h2>
+        <p class="note" style="margin:0">La pompa può solo riempire: u ≥ 0 sempre.</p>
+        <label class="toggle"><input id="awOn" type="checkbox" checked> Anti-windup (PI)</label>
+        <label class="toggle"><input id="satOn" type="checkbox"> Portata massima della pompa</label>
+        <div class="sub" id="satBox" hidden>
+          <div class="param" data-key="uMax" data-min="0.0001" data-max="0.005" data-log="1">
+            <label for="uMax_n">Portata massima</label>
+            <input id="uMax_n" type="number" step="any">
+            <input id="uMax_r" type="range" min="0" max="1000" aria-label="uMax">
+            <span class="unit">m³/s · 0 ≤ u ≤ u_max</span>
+          </div>
+        </div>
+        <label class="toggle"><input id="distOn" type="checkbox"> Disturbo: prelievo a gradino</label>
+        <div class="sub" id="distBox" hidden>
+          <div class="param" data-key="d" data-min="0" data-max="0.002">
+            <label for="d_n">Portata prelevata d</label>
+            <input id="d_n" type="number" step="any">
+            <input id="d_r" type="range" min="0" max="1000" aria-label="d">
+            <span class="unit">m³/s</span>
+          </div>
+          <div class="param" data-key="tDist" data-min="0" data-max="200">
+            <label for="tDist_n">Istante del disturbo</label>
+            <input id="tDist_n" type="number" step="0.5">
+            <input id="tDist_r" type="range" min="0" max="1000" aria-label="tDist">
+            <span class="unit">s</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Results -->
+    <div class="right">
+      <section class="panel">
+        <div class="top">
+          <div class="tankbox">
+            <svg id="tank" viewBox="0 0 150 230" role="img" aria-label="Serbatoio"></svg>
+            <div class="tankside">
+              <div class="readout" id="readout"></div>
+              <button class="btn primary play" id="playBtn">▶ Riproduci</button>
+              <div class="readout" id="playCount"></div>
+            </div>
+          </div>
+          <div class="scopes">
+            <div class="legend">
+              <span><i style="background:var(--water)"></i>livello h(t)</span>
+              <span><i style="background:var(--ref)"></i>riferimento r(t)</span>
+              <span><i style="background:var(--ghost)"></i>curve fissate</span>
+            </div>
+            <div class="scope"><canvas id="cLevel" aria-label="Grafico del livello"></canvas></div>
+            <div class="legend"><span><i style="background:var(--cmd)"></i>portata della pompa u(t) [10⁻³ m³/s]</span></div>
+            <div class="scope small"><canvas id="cCmd" aria-label="Grafico del comando"></canvas></div>
+            <p class="note" style="margin:0">Premi <b>Riproduci</b> per vedere la risposta. Al termine passa il mouse (o il dito) sul grafico per leggere i valori e vedere il serbatoio in quell'istante.</p>
+          </div>
+        </div>
+      </section>
+
+      <div class="metrics" id="metrics"></div>
+
+      <div class="bottom">
+        <section class="panel">
+          <h2>Confronto</h2>
+          <div class="btns">
+            <button class="btn" id="pinBtn">Fissa questa curva</button>
+            <button class="btn" id="clearBtn">Cancella fissate</button>
+            <button class="btn" id="resetBtn">Valori iniziali</button>
+          </div>
+          <p class="note" style="margin:0">Le curve fissate restano in grigio sul grafico, così si confrontano due tarature.</p>
+        </section>
+        <section class="panel">
+          <h2>Le tue prove</h2>
+          <ol id="history" class="history"></ol>
+        </section>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Model constants ----------
+const AREA = 0.01;          // tank cross-section [m^2]
+const H_MAX = 0.5;          // tank height [m] (overflow above this)
+const DT = 0.005;           // integration step [s]
+
+const DEFAULTS = {
+  mode: "P", kp: 0.005, ki: 0.0005, h0: 0.10, r1: 0.25, tStep: 2, tEnd: 40,
+  satOn: false, uMax: 0.0005, awOn: true, distOn: false, d: 0.0002, tDist: 20
+};
+let state = JSON.parse(JSON.stringify(DEFAULTS));
+let sim = null;             // current simulation result
+let pinned = [];            // pinned traces for comparison
+let cursorT = null;         // time under hover / playback
+let revealT = null;         // response is shown up to this time (null = not played yet)
+const isDone = () => revealT !== null && revealT >= state.tEnd;
+
+// ---------- Simulation (RK4 on [h, integral of error]) ----------
+function simulate(p) {
+  const n = Math.round(p.tEnd / DT);
+  const every = Math.max(1, Math.round(n / 1500));
+  const out = { t: [], h: [], r: [], u: [], overflow: false, empty: false, sat: false };
+  let h = p.h0, xi = 0;
+
+  const ref = t => (t >= p.tStep ? p.r1 : p.h0);
+  const dist = t => (p.distOn && t >= p.tDist ? p.d : 0);
+
+  // Controller output and saturation; returns [uApplied, uRaw]
+  function control(t, h, xi) {
+    const e = ref(t) - h;
+    let u = p.kp * e + (p.mode === "PI" ? p.ki * xi : 0);
+    const raw = u;
+    u = Math.max(u, 0);                       // pump can only fill: u >= 0 always
+    if (p.satOn) u = Math.min(u, p.uMax);     // optional upper limit
+    return [u, raw, e];
+  }
+  function deriv(t, h, xi) {
+    const [u, raw, e] = control(t, h, xi);
+    let dxi = p.mode === "PI" ? e : 0;
+    // Conditional integration anti-windup: stop integrating while saturated in the same direction
+    if (p.mode === "PI" && p.awOn && u !== raw && Math.sign(e) === Math.sign(raw - u)) dxi = 0;
+    let dh = (u - dist(t)) / AREA;
+    if (h <= 0 && dh < 0) dh = 0;
+    if (h >= H_MAX && dh > 0) dh = 0;
+    return [dh, dxi];
+  }
+
+  for (let k = 0; k <= n; k++) {
+    const t = k * DT;
+    if (k % every === 0 || k === n) {
+      const [u, raw] = control(t, h, xi);
+      if (u !== raw) out.sat = true;
+      out.t.push(t); out.h.push(h); out.r.push(ref(t)); out.u.push(u);
+    }
+    if (k === n) break;
+    const k1 = deriv(t, h, xi);
+    const k2 = deriv(t + DT / 2, h + DT / 2 * k1[0], xi + DT / 2 * k1[1]);
+    const k3 = deriv(t + DT / 2, h + DT / 2 * k2[0], xi + DT / 2 * k2[1]);
+    const k4 = deriv(t + DT, h + DT * k3[0], xi + DT * k3[1]);
+    h += DT / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+    xi += DT / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+    if (h > H_MAX) { h = H_MAX; out.overflow = true; }
+    if (h < 0) { h = 0; out.empty = true; }
+  }
+  return out;
+}
+
+// ---------- Performance metrics ----------
+function metrics(p, s) {
+  const step = p.r1 - p.h0;
+  const iStep = s.t.findIndex(t => t >= p.tStep);
+  const iEnd = (p.distOn && p.tDist > p.tStep) ? s.t.findIndex(t => t >= p.tDist) - 1 : s.t.length - 1;
+  const res = { finalErr: p.r1 - s.h[s.h.length - 1], overshoot: null, tSettle: null };
+  if (Math.abs(step) < 1e-9 || iStep < 0 || iEnd <= iStep) return res;
+  let peak = 0;
+  for (let i = iStep; i <= iEnd; i++) peak = Math.max(peak, (s.h[i] - p.h0) / step);
+  res.overshoot = Math.max(0, (peak - 1) * 100);
+  const band = 0.01 * Math.abs(step);
+  let last = -1;
+  for (let i = iStep; i <= iEnd; i++) if (Math.abs(s.h[i] - p.r1) > band) last = i;
+  if (last < iEnd) res.tSettle = s.t[Math.min(last + 1, iEnd)] - p.tStep;
+  return res;
+}
+
+// ---------- Formatting ----------
+const fmt = (x, d = 3) => {
+  if (x === null || !isFinite(x)) return "—";
+  const a = Math.abs(x);
+  if (a < 1e-9) return (0).toFixed(d).replace(".", ",");
+  if (a !== 0 && (a < 1e-3 || a >= 1e4)) return x.toExponential(2).replace(".", ",");
+  return x.toFixed(d).replace(".", ",");
+};
+
+// ---------- Parameter widgets (number box + slider, linear or log) ----------
+const params = [...document.querySelectorAll(".param")];
+function sliderToVal(el, s) {
+  const min = +el.dataset.min, max = +el.dataset.max, f = s / 1000;
+  return el.dataset.log ? min * Math.pow(max / min, f) : min + (max - min) * f;
+}
+function valToSlider(el, v) {
+  const min = +el.dataset.min, max = +el.dataset.max;
+  if (el.dataset.log) return 1000 * Math.log(Math.max(v, min) / min) / Math.log(max / min);
+  return 1000 * (v - min) / (max - min);
+}
+function niceRound(v) {
+  if (v === 0) return 0;
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.abs(v))) - 2);
+  return Math.round(v / mag) * mag;
+}
+function syncWidgets() {
+  params.forEach(el => {
+    const key = el.dataset.key;
+    el.querySelector("input[type=number]").value = +state[key].toPrecision(4);
+    el.querySelector("input[type=range]").value = valToSlider(el, state[key]);
+  });
+  document.getElementById("modeP").setAttribute("aria-pressed", state.mode === "P");
+  document.getElementById("modePI").setAttribute("aria-pressed", state.mode === "PI");
+  document.querySelector('[data-key="ki"]').classList.toggle("disabled", state.mode !== "PI");
+  document.getElementById("ki_n").disabled = document.getElementById("ki_r").disabled = state.mode !== "PI";
+  ["satOn", "awOn", "distOn"].forEach(k => document.getElementById(k).checked = state[k]);
+  document.getElementById("satBox").hidden = !state.satOn;
+  document.getElementById("distBox").hidden = !state.distOn;
+}
+params.forEach(el => {
+  const key = el.dataset.key;
+  const num = el.querySelector("input[type=number]");
+  const rng = el.querySelector("input[type=range]");
+  rng.addEventListener("input", () => {
+    state[key] = niceRound(sliderToVal(el, +rng.value));
+    num.value = +state[key].toPrecision(4);
+    run();
+  });
+  num.addEventListener("change", () => {
+    const v = parseFloat(String(num.value).replace(",", "."));
+    if (!isFinite(v) || v < 0) { num.value = +state[key].toPrecision(4); return; }
+    state[key] = v;
+    rng.value = valToSlider(el, v);
+    run();
+  });
+});
+document.getElementById("modeP").onclick = () => { state.mode = "P"; syncWidgets(); run(); };
+document.getElementById("modePI").onclick = () => { state.mode = "PI"; syncWidgets(); run(); };
+["satOn", "awOn", "distOn"].forEach(k => document.getElementById(k).addEventListener("change", e => {
+  state[k] = e.target.checked; syncWidgets(); run();
+}));
+document.getElementById("pinBtn").onclick = () => {
+  if (!isDone()) return;
+  const label = state.mode === "P" ? `P kₚ=${fmt(state.kp, 4)}` : `PI kₚ=${fmt(state.kp, 4)} kᵢ=${fmt(state.ki, 5)}`;
+  pinned.push({ t: sim.t, h: sim.h, u: sim.u, label });
+  if (pinned.length > 5) pinned.shift();
+  draw();
+};
+document.getElementById("clearBtn").onclick = () => { pinned = []; draw(); };
+document.getElementById("resetBtn").onclick = () => { state = JSON.parse(JSON.stringify(DEFAULTS)); syncWidgets(); run(); };
+
+// ---------- Plotting ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function niceTicks(lo, hi, count) {
+  const span = hi - lo || 1, raw = span / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= count) || 10 * mag;
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) ticks.push(+v.toPrecision(10));
+  return { ticks, step };
+}
+function plot(canvas, series, opts) {
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const g = canvas.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const m = { l: 62, r: 12, t: 10, b: 26 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  let lo = Infinity, hi = -Infinity;
+  series.forEach(s => s.y.forEach((v, i) => { if (s.upTo !== undefined && s.t[i] > s.upTo) return; lo = Math.min(lo, v); hi = Math.max(hi, v); }));
+  if (!isFinite(hi)) { lo = 0; hi = 1e-3; }
+  if (opts.includeZero) lo = Math.min(lo, 0);
+  if (hi - lo < 1e-9) { hi += 1e-3 || 1; lo -= 1e-3; }
+  const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+  const yT = niceTicks(lo, hi, 5);
+  lo = Math.min(lo, yT.ticks[0]); hi = Math.max(hi, yT.ticks[yT.ticks.length - 1]);
+  const tEnd = opts.tEnd;
+  const X = t => m.l + pw * t / tEnd, Y = v => m.t + ph * (1 - (v - lo) / (hi - lo));
+  g.font = `11px ${css("--f-mono")}`;
+  g.lineWidth = 1;
+  // Grid and y labels
+  g.strokeStyle = css("--grid"); g.fillStyle = css("--muted"); g.textAlign = "right"; g.textBaseline = "middle";
+  yT.ticks.forEach(v => { const y = Y(v); g.beginPath(); g.moveTo(m.l, y); g.lineTo(W - m.r, y); g.stroke(); g.fillText(opts.yfmt(v), m.l - 6, y); });
+  const xT = niceTicks(0, tEnd, Math.max(3, Math.floor(pw / 70)));
+  g.textAlign = "center"; g.textBaseline = "top";
+  xT.ticks.forEach(t => { const x = X(t); g.beginPath(); g.moveTo(x, m.t); g.lineTo(x, m.t + ph); g.stroke(); g.fillText(String(t).replace(".", ","), x, m.t + ph + 6); });
+  g.textAlign = "right"; g.fillText("t [s]", m.l - 14, m.t + ph + 6);
+  g.strokeStyle = css("--line"); g.strokeRect(m.l, m.t, pw, ph);
+  // Traces
+  g.save(); g.beginPath(); g.rect(m.l, m.t, pw, ph); g.clip();
+  series.forEach(s => {
+    g.strokeStyle = s.color; g.lineWidth = s.width || 2; g.setLineDash(s.dash || []);
+    g.beginPath();
+    s.t.forEach((t, i) => { if (s.upTo !== undefined && t > s.upTo) return; const x = X(t), y = Y(s.y[i]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+    g.stroke();
+  });
+  g.restore(); g.setLineDash([]);
+  // Cursor
+  if (cursorT !== null && sim && revealT !== null && cursorT <= revealT) {
+    const x = X(cursorT);
+    g.strokeStyle = css("--muted"); g.lineWidth = 1; g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(x, m.t); g.lineTo(x, m.t + ph); g.stroke(); g.setLineDash([]);
+    const i = indexAt(cursorT);
+    opts.cursorDots.forEach(c => { g.fillStyle = c.color; g.beginPath(); g.arc(x, Y(c.y[i]), 4, 0, 7); g.fill(); });
+  }
+  canvas._map = { m, pw, tEnd };
+}
+function indexAt(t) {
+  let lo = 0, hi = sim.t.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (sim.t[mid] < t) lo = mid; else hi = mid; }
+  return Math.abs(sim.t[lo] - t) < Math.abs(sim.t[hi] - t) ? lo : hi;
+}
+
+const cLevel = document.getElementById("cLevel"), cCmd = document.getElementById("cCmd");
+function draw() {
+  if (!sim) return;
+  const ghost = css("--ghost");
+  const lvl = pinned.map(p => ({ t: p.t, y: p.h, color: ghost, width: 1.5 }));
+  lvl.push({ t: sim.t, y: sim.r, color: css("--ref"), width: 2, dash: [6, 4] });
+  lvl.push({ t: sim.t, y: sim.h, color: css("--water"), width: 2.5, upTo: revealT ?? -1 });
+  plot(cLevel, lvl, { tEnd: state.tEnd, includeZero: true, yfmt: v => fmt(v, 2) + " m", cursorDots: [{ y: sim.h, color: css("--water") }] });
+  const cmd = pinned.map(p => ({ t: p.t, y: p.u, color: ghost, width: 1.5 }));
+  cmd.push({ t: sim.t, y: sim.u, color: css("--cmd"), width: 2.5, upTo: revealT ?? -1 });
+  plot(cCmd, cmd, { tEnd: state.tEnd, includeZero: true, yfmt: v => fmt(v * 1000, 2), cursorDots: [{ y: sim.u, color: css("--cmd") }] });
+  drawTank();
+}
+
+// ---------- Tank drawing ----------
+function drawTank() {
+  const i = revealT === null ? 0 : indexAt(Math.min(cursorT ?? revealT, revealT));
+  const h = sim.h[i], r = sim.r[i], u = sim.u[i], t = sim.t[i];
+  const x0 = 30, x1 = 120, yTop = 30, yBot = 210, Y = v => yBot - (yBot - yTop) * v / H_MAX;
+  const umax = Math.max(1e-9, ...sim.u.map(Math.abs));
+  const stream = Math.max(0, u) / umax;
+  const d = state.distOn && t >= state.tDist ? state.d : 0;
+  const svg = document.getElementById("tank");
+  let ticks = "";
+  for (let v = 0; v <= H_MAX + 1e-9; v += 0.1) ticks += `<line x1="${x1}" x2="${x1 + 6}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--muted)"/><text x="${x1 + 9}" y="${Y(v) + 3}" font-size="8" fill="var(--muted)" font-family="var(--f-mono)">${v.toFixed(1)}</text>`;
+  svg.innerHTML = `
+    <rect x="${x0 - 22}" y="6" width="50" height="10" fill="var(--muted)" rx="2"/>
+    <text x="${x0 + 3}" y="14" font-size="7" text-anchor="middle" fill="var(--panel)" font-family="var(--f-mono)">POMPA</text>
+    ${stream > 0.01 ? `<rect x="${x0 + 14}" y="16" width="${2 + 6 * stream}" height="${Y(h) - 16}" fill="var(--water)" opacity=".8"/>` : ""}
+    <rect x="${x0}" y="${Y(h)}" width="${x1 - x0}" height="${yBot - Y(h)}" fill="var(--water-soft)"/>
+    <line x1="${x0}" x2="${x1}" y1="${Y(h)}" y2="${Y(h)}" stroke="var(--water)" stroke-width="2"/>
+    <line x1="${x0 - 6}" x2="${x1 + 6}" y1="${Y(r)}" y2="${Y(r)}" stroke="var(--ref)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <path d="M${x0} ${yTop - 6} V${yBot} H${x1} V${yTop - 6}" fill="none" stroke="var(--ink)" stroke-width="2.5"/>
+    ${d > 0 ? `<path d="M${x0 + 45} ${yBot} v12 h-30" fill="none" stroke="var(--water)" stroke-width="3"/><text x="${x0 + 50}" y="${yBot + 17}" font-size="8" fill="var(--muted)" font-family="var(--f-mono)">d</text>` : ""}
+    ${ticks}`;
+  document.getElementById("readout").innerHTML =
+    `<div><span>t =</span> ${fmt(t, 2)} s</div><div><span>h =</span> ${fmt(h, 3)} m</div><div><span>r =</span> ${fmt(r, 3)} m</div><div><span>u =</span> ${fmt(u, 6)} m³/s</div>`;
+}
+
+// ---------- Hover / touch to read values ----------
+[cLevel, cCmd].forEach(c => {
+  const move = ev => {
+    const mp = c._map; if (!mp || !isDone()) return;
+    const rect = c.getBoundingClientRect();
+    const x = (ev.touches ? ev.touches[0].clientX : ev.clientX) - rect.left;
+    cursorT = Math.min(Math.max((x - mp.m.l) / mp.pw, 0), 1) * mp.tEnd;
+    stopPlay(); draw();
+  };
+  c.addEventListener("mousemove", move);
+  c.addEventListener("touchmove", move, { passive: true });
+  c.addEventListener("mouseleave", () => { if (!playing) { cursorT = null; draw(); } });
+});
+
+// ---------- Playback ----------
+let playing = false, raf = null;
+const playBtn = document.getElementById("playBtn");
+function stopPlay() { playing = false; cancelAnimationFrame(raf); playBtn.textContent = "▶ Riproduci"; }
+playBtn.onclick = () => {
+  if (playing) { stopPlay(); return; }
+  logPlay();
+  playing = true; playBtn.textContent = "■ Ferma";
+  const durationMs = 6000, start = performance.now();
+  const step = now => {
+    if (!playing) return;
+    const f = Math.min(1, (now - start) / durationMs);
+    cursorT = revealT = f * state.tEnd; draw();
+    if (f < 1) raf = requestAnimationFrame(step);
+    else { stopPlay(); cursorT = null; renderMetrics(); draw(); }
+  };
+  raf = requestAnimationFrame(step);
+};
+
+// ---------- Play history (kept only in this browser) ----------
+const HIST_KEY = "tank-lab-history";
+let playLog = [];
+try { playLog = JSON.parse(localStorage.getItem(HIST_KEY)) || []; } catch (e) { playLog = []; }
+function saveHistory() { try { localStorage.setItem(HIST_KEY, JSON.stringify(playLog)); } catch (e) {} }
+function logPlay() {
+  const s = state;
+  let desc = s.mode === "P" ? `P kₚ=${fmt(s.kp, 4)}` : `PI kₚ=${fmt(s.kp, 4)} kᵢ=${fmt(s.ki, 5)}`;
+  desc += ` · ${fmt(s.h0, 2)}→${fmt(s.r1, 2)} m`;
+  if (s.satOn) desc += ` · uₘₐₓ=${fmt(s.uMax, 5)}`;
+  if (s.distOn) desc += ` · d=${fmt(s.d, 5)}`;
+  playLog.push(desc);
+  saveHistory(); renderHistory();
+}
+function renderHistory() {
+  document.getElementById("playCount").innerHTML = `Prove eseguite: <b>${playLog.length}</b>`;
+  const ol = document.getElementById("history");
+  ol.innerHTML = playLog.length
+    ? playLog.map((d, i) => `<li><span>#${i + 1}</span><span>${d}</span></li>`).reverse().join("")
+    : '<li class="empty">Nessuna prova ancora: premi Riproduci.</li>';
+}
+
+// ---------- Metrics and theory panels ----------
+function renderMetrics() {
+  document.getElementById("pinBtn").disabled = !isDone();
+  if (!isDone()) {
+    document.getElementById("metrics").innerHTML = ["Errore a fine prova", "Sovraelongazione", "Assestamento (±1%)", "u massima"]
+      .map(k => `<div class="metric"><div class="k">${k}</div><div class="v">—</div></div>`).join("");
+    return;
+  }
+  const mt = metrics(state, sim);
+  if (Math.abs(mt.finalErr) < 5e-5) mt.finalErr = 0;   // below 0.05 mm shows as zero
+  const errCls = Math.abs(mt.finalErr) < 0.005 * Math.max(Math.abs(state.r1), 0.01) ? "ok" : "warn";
+  const ovCls = mt.overshoot !== null && mt.overshoot > 0.5 ? "warn" : "";
+  document.getElementById("metrics").innerHTML = `
+    <div class="metric"><div class="k">Errore a fine prova</div><div class="v ${errCls}">${fmt(mt.finalErr * 1000, 1)} mm</div></div>
+    <div class="metric"><div class="k">Sovraelongazione</div><div class="v ${ovCls}">${mt.overshoot === null ? "—" : fmt(mt.overshoot, 1) + " %"}</div></div>
+    <div class="metric"><div class="k">Assestamento (±1%)</div><div class="v">${mt.tSettle === null ? "non raggiunto" : fmt(mt.tSettle, 1) + " s"}</div></div>
+    <div class="metric"><div class="k">u massima</div><div class="v">${fmt(Math.max(...sim.u), 5)} m³/s</div></div>`;
+}
+
+// ---------- Main ----------
+function run() {
+  sim = simulate(state);
+  stopPlay(); revealT = null; cursorT = null;
+  renderMetrics(); draw();
+}
+syncWidgets(); renderHistory(); run();
+window.addEventListener("resize", draw);
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw); } catch (e) {}
+new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>
+
+</body>
+</html>
